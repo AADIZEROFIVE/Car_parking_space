@@ -49,90 +49,170 @@ Here’s an overview of the steps and components you'll need for such a project.
    - **Display Output**:
      - Create logic for driving the display (LEDs or 7-segment displays) to indicate parking spot status.
 
-#### 4. **Write the Code (VHDL/Verilog)**
-   Here’s a rough idea of the components you'd code in VHDL or Verilog:
+Sure! Here’s the same basic car parking automation system code in **Verilog**. This version will include the following components:
 
-   - **Sensor Input Logic**:
-     ```vhdl
-     -- Example VHDL to read from an ultrasonic sensor
-     PROCESS (clk)
-     BEGIN
-        IF rising_edge(clk) THEN
-            -- Read the sensor data here (distance)
-            car_detected <= sensor_input;  -- Simple logic for car detection
-        END IF;
-     END PROCESS;
-     ```
+1. **Sensor Input Logic**: Simple detection of whether a car is present or not.
+2. **Parking Spot Management**: A simple finite state machine (FSM) to manage the parking spots (free/occupied).
+3. **Servo Motor Control**: Simple PWM generation to control a servo motor (e.g., for controlling parking barriers).
+4. **Display Output**: Show status using a single LED to represent whether the parking spot is free or occupied.
 
-   - **Parking Spot Logic (FSM or State Machine)**:
-     ```vhdl
-     -- FSM for managing parking spots (free/occupied)
-     PROCESS (clk)
-     BEGIN
-        IF rising_edge(clk) THEN
-            CASE state IS
-                WHEN idle =>
-                    IF car_detected = '1' THEN
-                        state <= park_car;
-                    END IF;
-                WHEN park_car =>
-                    -- logic for assigning a parking spot and guiding the car
-                    state <= occupied;
-                WHEN occupied =>
-                    -- Show status on LEDs
-                    spot_status <= '1'; -- Parking spot occupied
-                WHEN others =>
-                    state <= idle;
-            END CASE;
-        END IF;
-     END PROCESS;
-     ```
+### Verilog Code for Car Parking Automation System
 
-   - **Servo Motor PWM Control**:
-     ```vhdl
-     -- PWM generation for controlling a servo motor
-     PROCESS (clk)
-     BEGIN
-        IF rising_edge(clk) THEN
-            IF pwm_counter < pwm_duty THEN
-                pwm_out <= '1';  -- Servo active
-            ELSE
-                pwm_out <= '0';  -- Servo inactive
-            END IF;
+#### 1. **Sensor Input Logic**
+This part handles the input from a sensor (e.g., ultrasonic or IR) and provides a signal indicating whether a parking spot is occupied or not.
 
-            pwm_counter <= pwm_counter + 1;
-            IF pwm_counter >= pwm_max THEN
-                pwm_counter <= 0;
-            END IF;
-        END IF;
-     END PROCESS;
-     ```
+```verilog
+module parking_sensor (
+    input clk,               // Clock signal
+    input sensor_input,      // Sensor input (e.g., ultrasonic or IR)
+    output reg car_detected  // Output signal to indicate car detection
+);
 
-#### 5. **Simulation**
-   - Before programming your FPGA, simulate the design to check for logical errors. Vivado provides a built-in simulator that allows you to test your VHDL/Verilog code.
-   - You can use testbenches to simulate the sensor inputs and monitor the output signals like the servo control and parking spot status.
+always @(posedge clk) begin
+    car_detected <= sensor_input;  // Update the car_detected status based on the sensor input
+end
 
-#### 6. **Synthesize and Implement**
-   - Once the simulation passes, synthesize your design in Vivado to convert it to FPGA configuration.
-   - Implement the design, which will map the logic to the FPGA's hardware resources (LUTs, flip-flops, etc.).
-   - Generate the bitstream and upload it to the FPGA board.
+endmodule
+```
 
-#### 7. **Test on Hardware**
-   - Once the design is loaded onto the FPGA, connect the sensors, motors, and display to the FPGA board.
-   - Test the system by simulating car movements and verifying if the parking automation works as expected.
+#### 2. **Parking Spot Management (FSM)**
 
-### Additional Features You Could Add:
-- **Multiple Parking Spots**: Manage multiple sensors for multiple parking spots, updating the status for each one.
-- **Real-Time Display**: Use a more complex display (e.g., an LCD screen) to show more detailed information.
-- **Advanced Control**: Add features like automated barrier control when a car approaches, or even a simple robotic arm to guide the car into the spot.
+This simple finite state machine (FSM) keeps track of parking spot occupancy. It checks whether a spot is free or occupied and updates its state.
 
-### Tools You’ll Need:
-- **Vivado Design Suite**: For creating and testing your FPGA designs.
-- **Xilinx FPGA Board** (e.g., Nexys, Basys, or a Zynq board).
-- **Sensors** (e.g., ultrasonic, IR).
-- **Motors** (for barriers or guiding cars).
+```verilog
+module parking_spot_manager (
+    input clk,                // Clock signal
+    input car_detected,       // Car detection signal from sensor
+    output reg spot_status    // Output signal indicating whether the parking spot is free (0) or occupied (1)
+);
 
-### Conclusion:
-This basic automation system involves creating a digital logic design that interfaces with hardware components like sensors, motors, and displays. Using Vivado and FPGA hardware, you can create a functional car parking automation system that detects parking spots, guides cars, and manages parking lot occupancy.
+// FSM States
+typedef enum reg [1:0] {
+    IDLE = 2'b00,
+    PARKING = 2'b01,
+    OCCUPIED = 2'b10
+} state_t;
 
-If you need further details on any specific part of the project, feel free to ask!
+state_t state, next_state;
+
+always @(posedge clk) begin
+    state <= next_state;  // Update state on clock edge
+end
+
+// Next state logic
+always @(*) begin
+    case (state)
+        IDLE: begin
+            if (car_detected) begin
+                next_state = PARKING;  // If a car is detected, move to PARKING state
+            end else begin
+                next_state = IDLE;     // Otherwise, stay in IDLE state
+            end
+        end
+        
+        PARKING: begin
+            next_state = OCCUPIED;  // Once a car is parked, move to OCCUPIED state
+        end
+        
+        OCCUPIED: begin
+            next_state = OCCUPIED;  // Once the spot is occupied, stay in OCCUPIED state
+        end
+        
+        default: begin
+            next_state = IDLE;  // Default state
+        end
+    endcase
+end
+
+// Output logic to indicate spot occupancy
+always @(state) begin
+    case (state)
+        IDLE: spot_status = 0;  // Spot is free
+        OCCUPIED: spot_status = 1;  // Spot is occupied
+        default: spot_status = 0;  // Default to free spot
+    endcase
+end
+
+endmodule
+```
+
+#### 3. **Servo Motor PWM Control**
+
+This part of the code generates a PWM signal to control a servo motor. It assumes that the duty cycle can be controlled to move the motor.
+
+```verilog
+module pwm_generator (
+    input clk,                 // Clock signal
+    input [7:0] pwm_duty,      // Duty cycle for PWM (range 0-255)
+    output reg pwm_out         // PWM output signal to control servo motor
+);
+
+reg [7:0] pwm_counter;  // Counter for PWM signal
+
+always @(posedge clk) begin
+    pwm_counter <= pwm_counter + 1;  // Increment counter on each clock cycle
+    if (pwm_counter < pwm_duty) begin
+        pwm_out <= 1;  // High signal for the duty cycle duration
+    end else begin
+        pwm_out <= 0;  // Low signal for the remaining period
+    end
+end
+
+endmodule
+```
+
+#### 4. **Top-Level Module**
+
+This top-level module integrates all the components: sensor logic, FSM for parking spot management, and PWM generation for the servo motor.
+
+```verilog
+module car_parking_automation (
+    input clk,               // Clock signal
+    input sensor_input,      // Car presence detection from sensor
+    input [7:0] pwm_duty,    // Duty cycle for the servo motor
+    output spot_status,      // Parking spot status (0 = free, 1 = occupied)
+    output pwm_out           // PWM signal to control the servo motor
+);
+
+// Internal signals
+wire car_detected;          // Signal indicating car detection
+
+// Instantiate parking sensor logic
+parking_sensor ps (
+    .clk(clk),
+    .sensor_input(sensor_input),
+    .car_detected(car_detected)
+);
+
+// Instantiate parking spot manager
+parking_spot_manager psm (
+    .clk(clk),
+    .car_detected(car_detected),
+    .spot_status(spot_status)
+);
+
+// Instantiate PWM generator for controlling the servo motor
+pwm_generator pwm (
+    .clk(clk),
+    .pwm_duty(pwm_duty),
+    .pwm_out(pwm_out)
+);
+
+endmodule
+```
+
+### Key Points in the Verilog Design:
+- **Parking Sensor Logic**: Detects whether a car is present in a parking spot using an input signal.
+- **FSM for Parking Spot**: Manages the state of a parking spot (free, occupied). When a car is detected, the FSM transitions through different states (IDLE -> PARKING -> OCCUPIED).
+- **PWM Generation**: Generates a PWM signal for controlling a servo motor, which could be used to open/close a barrier or guide the car into the spot.
+- **Top-Level Integration**: Combines the modules to create the full system. The parking spot status is displayed via `spot_status`, and the PWM signal for the servo motor is output on `pwm_out`.
+
+### Testing the Design:
+
+1. **Simulation**: You can simulate this Verilog code in Vivado to check the behavior of the FSM, sensor logic, and PWM signal.
+2. **Synthesis and Implementation**: After simulation, synthesize the design to generate the bitstream and upload it to an FPGA board.
+3. **Hardware Testing**: After loading the design to the FPGA, test the system with actual sensors and motors.
+
+This basic car parking automation system should be a good starting point for further enhancements, such as adding more parking spots, incorporating more advanced sensor types (e.g., cameras or RFID), and improving the motor control system for more precise actions.
+
+Let me know if you need further clarification on any part!
